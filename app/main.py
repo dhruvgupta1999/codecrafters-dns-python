@@ -41,6 +41,9 @@ Attributes:
         - Number of records in the Additional section.
 """
 
+# label encoding: [6]google[3]com followed by a null byte b'\x00'.
+CODECRAFTERS_DOMAIN_LABEL_ENCODED = b'\x0ccodecrafters\x02io\x00'
+
 def parse_dns_header(buf):
     if len(buf) < 12:
         raise ValueError("Buffer too short to be a valid DNS header")
@@ -82,7 +85,7 @@ def parse_dns_header(buf):
     }
 
 
-def generate_dns_header(question_count=0):
+def generate_dns_header(question_count=0, answer_count=0):
     # Fixed values based on your spec
     packet_id = 1234        # 16 bits
 
@@ -110,7 +113,7 @@ def generate_dns_header(question_count=0):
 
     # Counts for each section
     qdcount = question_count             # Question Count
-    ancount = 0             # Answer Record Count
+    ancount = answer_count             # Answer Record Count
     nscount = 0             # Authority Record Count
     arcount = 0             # Additional Record Count
 
@@ -121,14 +124,30 @@ def generate_dns_header(question_count=0):
     return header
 
 
+
 def generate_question():
     # name follows label encoding: [6]google[3]com followed by a null byte b'\x00'.
-    name = b'\x0ccodecrafters\x02io\x00'
+    name = CODECRAFTERS_DOMAIN_LABEL_ENCODED
     # corresponding to the "A" record type)
     typ = int(1).to_bytes(2)
     # (corresponding to the "IN" record class)
     class_field = int(1).to_bytes(2)
     return name + typ + class_field
+
+def generate_answer():
+    name = CODECRAFTERS_DOMAIN_LABEL_ENCODED
+    # corresponding to the "A" record type)
+    typ = int(1).to_bytes(2)
+    # (corresponding to the "IN" record class)
+    class_field = int(1).to_bytes(2)
+    # This field tells the client how much time the name->IP mapping is valid for.
+    time_to_live = int(60).to_bytes(4)
+    # Length 4, encoded as a 2-byte big-endian int (corresponds to the length of the RDATA field)
+    length_rdata = int(4).to_bytes(2)
+    # Data	Any IP address, encoded as a 4-byte big-endian int.
+    # For example: \x08\x08\x08\x08\ (that's 8.8.8.8 encoded as a 4-byte integer)
+    ip = b'\x08\x08\x08\x08'
+    return name + typ + class_field + time_to_live + length_rdata + ip
 
 def main():
     # You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -146,10 +165,10 @@ def main():
             buf, source = udp_socket.recvfrom(512)
             logging.info(f"data in {buf=}\n buf_len = {len(buf)}")
             response = b""
-            header = generate_dns_header(question_count=1)
+            header = generate_dns_header(question_count=1, answer_count=1)
             qsn = generate_question()
-            msg = b""
-            udp_socket.sendto(header+qsn+msg, source)
+            answer = generate_answer()
+            udp_socket.sendto(header+qsn+answer, source)
         except Exception as e:
             print(f"Error receiving data: {e}")
             break
