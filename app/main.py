@@ -16,7 +16,7 @@ def main():
         try:
             # Receives 512 bytes
             buf, source = udp_socket.recvfrom(512)
-            logging.info(f"data in {buf=}")
+            logging.info(f"data in {buf=}\n buf_len = {len(buf)}")
             response = b""
 
             udp_socket.sendto(response, source)
