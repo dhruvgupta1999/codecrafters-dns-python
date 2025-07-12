@@ -122,8 +122,8 @@ def generate_dns_header(question_count=0):
 
 
 def generate_question():
-    # name follows label encoding: [6]google[3]com
-    name = b'\x0ccodecrafters\x02io'
+    # name follows label encoding: [6]google[3]com followed by a null byte b'\x00'.
+    name = b'\x0ccodecrafters\x02io\x00'
     # corresponding to the "A" record type)
     typ = int(1).to_bytes(2)
     # (corresponding to the "IN" record class)
