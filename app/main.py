@@ -82,7 +82,7 @@ def parse_dns_header(buf):
     }
 
 
-def generate_dns_header():
+def generate_dns_header(question_count=0):
     # Fixed values based on your spec
     packet_id = 1234        # 16 bits
 
@@ -109,7 +109,7 @@ def generate_dns_header():
     )
 
     # Counts for each section
-    qdcount = 0             # Question Count
+    qdcount = question_count             # Question Count
     ancount = 0             # Answer Record Count
     nscount = 0             # Authority Record Count
     arcount = 0             # Additional Record Count
@@ -122,6 +122,7 @@ def generate_dns_header():
 
 
 def generate_question():
+    # name follows label encoding: [6]google[3]com
     name = b'\x0ccodecrafters\x02io'
     # corresponding to the "A" record type)
     typ = int(1).to_bytes(2)
@@ -145,7 +146,7 @@ def main():
             buf, source = udp_socket.recvfrom(512)
             logging.info(f"data in {buf=}\n buf_len = {len(buf)}")
             response = b""
-            header = generate_dns_header()
+            header = generate_dns_header(question_count=1)
             qsn = generate_question()
             msg = b""
             udp_socket.sendto(header+qsn+msg, source)
