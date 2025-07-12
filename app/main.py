@@ -85,19 +85,20 @@ def parse_dns_header(buf):
     }
 
 
-def generate_dns_header(question_count=0, answer_count=0):
+def generate_dns_header(*, question_count=0, answer_count=0, packet_id=1234,
+                        opcode=0, rd=0, response_code=0):
     # Fixed values based on your spec
-    packet_id = 1234        # 16 bits
+    packet_id = packet_id        # 16 bits
 
     # Flags field (16 bits), broken down below:
     qr     = 1              # 1 bit
-    opcode = 0              # 4 bits
+    opcode = opcode              # 4 bits
     aa     = 0              # 1 bit
     tc     = 0              # 1 bit
-    rd     = 0              # 1 bit
+    rd     = rd              # 1 bit
     ra     = 0              # 1 bit
     z      = 0              # 3 bits
-    rcode  = 0              # 4 bits
+    rcode  = response_code              # 4 bits
 
     # Construct the 16-bit flags field using bitwise operations
     flags = (
@@ -164,8 +165,15 @@ def main():
             # Conventionally, DNS packets are sent using UDP transport and are limited to 512 bytes.
             buf, source = udp_socket.recvfrom(512)
             logging.info(f"data in {buf=}\n buf_len = {len(buf)}")
-            response = b""
-            header = generate_dns_header(question_count=1, answer_count=1)
+            recvd_header_dict = parse_dns_header(buf)
+            packet_id = recvd_header_dict["Packet ID"]
+            opcode = recvd_header_dict["Opcode"]
+            rd = recvd_header_dict["RD"]
+            # Response Code (RCODE)
+            # 0 (no error) if OPCODE is 0 (standard query) else 4 (not implemented)
+            rcode = 0 if rd == 0 else 4
+            header = generate_dns_header(question_count=1, answer_count=1, packet_id=packet_id,
+                                         opcode=opcode, rd=rd, response_code=rcode)
             qsn = generate_question()
             answer = generate_answer()
             udp_socket.sendto(header+qsn+answer, source)
