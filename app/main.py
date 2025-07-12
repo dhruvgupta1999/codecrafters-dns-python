@@ -68,7 +68,7 @@ def parse_dns_header(buf):
     z = (flags >> 4) & 0x7
     rcode = flags & 0xF
 
-    return {
+    header = {
         "Packet ID": packet_id,
         "QR": qr,
         "Opcode": opcode,
@@ -83,6 +83,8 @@ def parse_dns_header(buf):
         "NSCOUNT": nscount,
         "ARCOUNT": arcount
     }
+    logging.info(f"received header:\n {header}")
+    return header
 
 
 def generate_dns_header(*, question_count=0, answer_count=0, packet_id=1234,
@@ -171,7 +173,7 @@ def main():
             rd = recvd_header_dict["RD"]
             # Response Code (RCODE)
             # 0 (no error) if OPCODE is 0 (standard query) else 4 (not implemented)
-            rcode = 0 if rd == 0 else 4
+            rcode = 0 if opcode == 0 else 4
             header = generate_dns_header(question_count=1, answer_count=1, packet_id=packet_id,
                                          opcode=opcode, rd=rd, response_code=rcode)
             qsn = generate_question()
