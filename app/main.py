@@ -361,6 +361,7 @@ def main():
             response_answer_section = b''
 
             if args.resolver:
+                print(f"forwarding server at : {args.resolver}")
                 response_answer_section = forward_and_get_answers(recvd_header_dict, questions, udp_socket, args.resolver)
             else:
                 for question in questions:
