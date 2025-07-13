@@ -229,7 +229,6 @@ def parse_dns_questions(packet, num_questions):
     Return all parsed questions as domain, type, class tuples of each question.
     also return the index of byte just after the question section ends.
     """
-    packet = packet.copy()
     questions = []
     # exclude 12 bytes of header
     idx = 12
