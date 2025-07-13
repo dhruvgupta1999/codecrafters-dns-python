@@ -196,6 +196,7 @@ def parse_dns_question(packet, start_idx):
 
         if byt == 0:
             # null byte
+            label_encoded_domain += b'\x00'
             idx += 1
             break
         # Is it a pointer instead ?
@@ -212,7 +213,7 @@ def parse_dns_question(packet, start_idx):
             break
 
         label_len = byt
-        label_encoded_domain += packet[idx + 1:idx + 1 + label_len]
+        label_encoded_domain += packet[idx:idx + 1 + label_len]
         idx = idx + 1 + label_len
 
     assert idx < len(packet)
