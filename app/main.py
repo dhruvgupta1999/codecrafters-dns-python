@@ -288,7 +288,7 @@ def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, a
 
     """
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    udp_socket.bind(("127.0.0.1", 2053))
+    udp_socket.bind(("127.0.0.1", 2054))
     ip, port = tuple(address.split(':'))
     peer = ip, int(port)
     print(f"peer is {peer}")
