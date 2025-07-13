@@ -288,6 +288,7 @@ def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, a
 
     """
     peer = tuple(':'.split(address))
+    print(f"peer is {peer}")
     concat_answer = b''
 
     packet_id = recvd_header_dict["Packet ID"]
