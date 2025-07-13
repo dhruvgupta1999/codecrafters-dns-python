@@ -204,7 +204,7 @@ def parse_dns_question(packet, start_idx):
             remaining_domain_address = int.from_bytes(packet[idx:idx+2]) ^ 0xC000
             print("found a pointer.")
             print(f"prefix: {label_encoded_domain}")
-
+            print(f"domain suffix byte index in packet: {remaining_domain_address}")
             domain_suffix = get_label_encoded_domain_suffix(packet, remaining_domain_address)
             print(f"suffix: {domain_suffix}")
             label_encoded_domain += domain_suffix
