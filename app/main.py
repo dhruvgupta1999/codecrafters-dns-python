@@ -215,7 +215,6 @@ def parse_dns_question(packet, start_idx):
         label_encoded_domain += packet[idx + 1:idx + 1 + label_len]
         idx = idx + 1 + label_len
 
-    label_encoded_domain = packet[start_idx:idx]
     assert idx < len(packet)
     typ = int.from_bytes(packet[idx:idx + 2])
     class_field = int.from_bytes(packet[idx + 2:idx + 4])
