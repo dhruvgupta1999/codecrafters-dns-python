@@ -120,12 +120,12 @@ def parse_dns_header(buf):
 
 
 def generate_dns_header(*, question_count=0, answer_count=0, packet_id=1234,
-                        opcode=0, rd=0, response_code=0):
+                        opcode=0, rd=0, response_code=0, qr=1):
     # Fixed values based on your spec
     packet_id = packet_id        # 16 bits
 
     # Flags field (16 bits), broken down below:
-    qr     = 1              # 1 bit
+    qr     = qr              # 1 bit
     opcode = opcode              # 4 bits
     aa     = 0              # 1 bit
     tc     = 0              # 1 bit
@@ -299,8 +299,9 @@ def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, a
     opcode = recvd_header_dict["Opcode"]
     rd = recvd_header_dict["RD"]
     rcode = recvd_header_dict["RCODE"]
+    qr = recvd_header_dict['QR']
     header_to_forward = generate_dns_header(question_count=1, answer_count=0, packet_id=packet_id,
-                                          opcode=opcode, rd=rd, response_code=rcode)
+                                          opcode=opcode, rd=rd, response_code=rcode, qr=qr)
 
     for q in received_questions:
         domain = q[0]
