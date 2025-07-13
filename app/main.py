@@ -41,6 +41,29 @@ Attributes:
         - Number of records in the Additional section.
 """
 
+"""
+
+Compression in DNS:
+If length byte > 0xC (2 MSB are set)
+Then remaining 6 bits of length byte + the next byte = 14 bits.
+
+These 14 bits point to the byte address in the received packet where the remaining domain name can be found.
+
+eg:
+a.google.com is encoded as [1]a[6]google[3]com[null_byte]
+b.google.com is encoded as [1]b[2bits_pointer_incoming_!!][14bits_packet_address of [6]google[3]com]
+
+
+buf_copy
+
+normal name,
+
+
+
+
+"""
+
+
 # label encoding: [6]google[3]com followed by a null byte b'\x00'.
 CODECRAFTERS_DOMAIN_LABEL_ENCODED = b'\x0ccodecrafters\x02io\x00'
 
@@ -149,25 +172,71 @@ def parse_label_encoded_domain(question_bytes) -> tuple[str, int]:
     domain = '.'.join(labels)
     return domain, idx
 
-
-def parse_dns_question(buf):
-    # ignore header part
-    buf = buf[12:]
-    idx = 0
-    while idx < len(buf):
-        byt = buf[idx]
+def get_label_encoded_domain_suffix(packet, start_idx):
+    """
+    When we use compression, we get the start index of the domain suffix.
+    :param remaining_buf:
+    :return:
+    """
+    idx = start_idx
+    while idx < len(packet):
+        # look for null byte
+        if packet[idx] == 0:
+            return packet[start_idx: idx]
         idx += 1
+    raise ValueError("Couldn't find any null byte to indicate the end of domain.")
+
+def parse_dns_question(packet, start_idx):
+    """
+
+    :param packet: The received packet in full with header and everything
+    :param start_idx: The current idx where this question starts
+    :return: the question fields as a tuple, along with the index at which the next question or an answer starts.
+    """
+    # ignore header part
+    idx = start_idx
+    label_encoded_domain = b''
+    while idx < len(packet):
+        byt = packet[idx]
+
         if byt == 0:
             # null byte
+            idx += 1
             break
-    label_encoded_domain = buf[:idx]
-    assert idx < len(buf)
-    typ = int.from_bytes(buf[idx:idx+2])
-    class_field = int.from_bytes(buf[idx+2:idx+4])
+        # Is it a pointer instead ?
+        if byt & 0xC0:
+            # Get the remaining 6 bits + next byte to get the address of the remaining domain name.
+            remaining_domain_address = int.from_bytes(packet[idx:idx+2]) ^ 0xC000
+            domain_suffix = get_label_encoded_domain_suffix(packet, remaining_domain_address)
+            label_encoded_domain += domain_suffix
+            idx += 2
+            pass
+
+        label_len = byt
+        label_encoded_domain += packet[idx + 1:idx + 1 + label_len]
+        idx = idx + 1 + label_len
+
+    label_encoded_domain = packet[:idx]
+    assert idx < len(packet)
+    typ = int.from_bytes(packet[idx:idx + 2])
+    class_field = int.from_bytes(packet[idx + 2:idx + 4])
     logging.info("Received question:")
     logging.info(f"{label_encoded_domain=}\n{typ=}\n{class_field=}")
-    return label_encoded_domain, typ, class_field
+    return label_encoded_domain, typ, class_field, idx+4
 
+def parse_dns_questions(packet, num_questions):
+    """
+    Return all parsed questions as domain, type, class tuples of each question.
+    also return the index of byte just after the question section ends.
+    """
+    packet = packet.copy()
+    questions = []
+    # exclude 12 bytes of header
+    idx = 12
+    for _ in range(num_questions):
+        label_encoded_domain, typ, class_field, idx = parse_dns_question(packet, idx)
+        questions.append((label_encoded_domain, typ, class_field))
+    return questions, idx
 
 def generate_question(label_encoded_domain=CODECRAFTERS_DOMAIN_LABEL_ENCODED):
     # name follows label encoding: [6]google[3]com followed by a null byte b'\x00'.
@@ -212,17 +281,29 @@ def main():
             packet_id = recvd_header_dict["Packet ID"]
             opcode = recvd_header_dict["Opcode"]
             rd = recvd_header_dict["RD"]
-            label_encoded_domain, typ, class_field  = parse_dns_question(buf)
+            qdcount = recvd_header_dict["QDCOUNT"]
 
-
+            # 1. create response header
             # Response Code (RCODE)
             # 0 (no error) if OPCODE is 0 (standard query) else 4 (not implemented)
             rcode = 0 if opcode == 0 else 4
-            header = generate_dns_header(question_count=1, answer_count=1, packet_id=packet_id,
+            response_header = generate_dns_header(question_count=1, answer_count=1, packet_id=packet_id,
                                          opcode=opcode, rd=rd, response_code=rcode)
-            qsn = generate_question(label_encoded_domain=label_encoded_domain)
-            answer = generate_answer(label_encoded_domain=label_encoded_domain)
-            udp_socket.sendto(header+qsn+answer, source)
+
+
+            # 2. parse questions
+            questions, question_section_end = parse_dns_questions(buf, qdcount)
+            logging.info(f"Questions received:\n {questions=}")
+            response_question_section = buf[12:question_section_end]
+
+            # create answer section
+            response_answer_section = b''
+            for question in questions:
+                label_encoded_domain, _, _ = question
+                answer = generate_answer(label_encoded_domain=label_encoded_domain)
+                response_answer_section += answer
+            response = response_header + response_question_section + response_answer_section
+            udp_socket.sendto(response, source)
         except Exception as e:
             print(f"Error receiving data: {e}")
             break
