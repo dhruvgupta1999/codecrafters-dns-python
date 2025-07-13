@@ -176,7 +176,7 @@ def get_label_encoded_domain_suffix(packet, start_idx):
     while idx < len(packet):
         # look for null byte
         if packet[idx] == 0:
-            return packet[start_idx: idx]
+            return packet[start_idx: idx+1]
         idx += 1
     raise ValueError("Couldn't find any null byte to indicate the end of domain.")
 
