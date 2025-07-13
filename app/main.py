@@ -307,8 +307,6 @@ def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, a
         q_bytes = generate_question(domain)
         packet_to_forward = header_to_forward + q_bytes
         udp_socket.sendto(packet_to_forward, peer)
-        # possible bug: Here we have not handled the case where we are expecting to recv response from other dns server.
-        # But some client sends a request and we receive that instead.
         while True:
             buf, source = udp_socket.recvfrom(512)
             print(f"{source=}")
@@ -318,6 +316,7 @@ def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, a
                 packets.append((buf, source))
             else:
                 break
+        print(f"{packets=}")
         assert source == peer
         answer_bytes = buf[len(packet_to_forward):]
         concat_answer += answer_bytes
