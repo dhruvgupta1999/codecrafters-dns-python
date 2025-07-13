@@ -6,7 +6,16 @@ import struct
 """
 https://github.com/EmilHernvall/dnsguide/blob/b52da3b32b27c81e5c6729ac14fe01fef8b1b593/chapter1.md
 
-Attributes:
+
+DNS packet:
+1. header
+2. question : domainName for which I want the IP address, type, class
+3. answer : empty for client packets, the IP address is filled in the answer section in packets 
+            sent by DNS server.
+            
+
+
+Header section Attributes (you don't really need to know much here):
     * id [16 bits] (Packet Identifier)
         - A random ID assigned to query packets. Response packets must reply with the same ID.
     * QR [1 bit] (Query/Response Indicator)
@@ -37,41 +46,35 @@ Attributes:
 
 """
 
+label encoding:
+The domain name is encoded using <label_len1><label1>..<label_leni><labeli><null_byte> pattern.
+eg:
+a.google.com is encoded as [1]a[6]google[3]com[null_byte] in the question section.
+
 Compression in DNS:
-If length byte > 0xC (2 MSB are set)
+Since the client might send multiple questions in the question section for the same domain.
+eg:
+Give me IP address for a.google.com, b.google.com, def.google.com (each domain here may actually map to different IPs)
+Here google.com is repeating again and again and we can't waste space in our 512 bytes packet, so we use compression.
+
+How compression works:
+If label_length_byte > 0xC0 (2 MSB are set)
 Then remaining 6 bits of length byte + the next byte = 14 bits.
 
-These 14 bits point to the byte address in the received packet where the remaining domain name can be found.
+These 14 bits point to the byte index in the entire received packet 
+where the remaining part of domain name can be found.
 
 eg:
 a.google.com is encoded as [1]a[6]google[3]com[null_byte]
 b.google.com is encoded as [1]b[2bits_pointer_incoming_!!][14bits_packet_address of [6]google[3]com]
 
 
-buf_copy
-
-normal name,
-
-
-
+Server Forwarding:
+If my DNS server doesn't have the domain to IP mapping for a given request.
+It asks another server, and returns the answer to the client.
 
 """
-"""
 
-Server forwarding challenge:
-
-parse_questions.
-
-generate header based on received header.
-
-concat 1 qsn at a time and forward it to server.
--> parse out the answer part (you can make use of len(heder+qsn) and get only answer)
-
-append all answers together.
-
-Now come to original response and return to client.
-
-"""
 
 # label encoding: [6]google[3]com followed by a null byte b'\x00'.
 CODECRAFTERS_DOMAIN_LABEL_ENCODED = b'\x0ccodecrafters\x02io\x00'
@@ -278,17 +281,18 @@ def generate_answer(label_encoded_domain=CODECRAFTERS_DOMAIN_LABEL_ENCODED):
     return name + typ + class_field + time_to_live + length_rdata + ip
 
 
-def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, address, packets):
+def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, address, packets_buffer):
     """
     Idea is that if my dns server doesn't have the ip,
     it will ask another DNS server and respond back to the client.
 
     We have to forward each question separately and concatenate their answers together and return that as the
-    response answer to the client.
+    response answer to the client. (This is kind of a shortcut, normally, we would first check in our cache first,
+    and only if we don't have the corresponding IP, we would reach out to the forwarding server).
 
     Note:
         This function is bad.
-        It returns a value, it also mutates the packets param.
+        It returns a value, it also mutates the packets_buffer param.
     """
     ip, port = tuple(address.split(':'))
     peer = ip, int(port)
@@ -300,24 +304,32 @@ def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, a
     rd = recvd_header_dict["RD"]
     rcode = recvd_header_dict["RCODE"]
     qr = recvd_header_dict['QR']
+
+    # 1. Generate a header for a request to forwarding server with 1 question count.
     header_to_forward = generate_dns_header(question_count=1, answer_count=0, packet_id=packet_id,
                                           opcode=opcode, rd=rd, response_code=rcode, qr=qr)
 
+    # 2. For each client question, send a request to forwarding server.
+    # Then we listen for packets. Some packets received might be requests from other clients, make sure to buffer them
+    # and keep them for later processing.
     for q in received_questions:
         domain = q[0]
         q_bytes = generate_question(domain)
         packet_to_forward = header_to_forward + q_bytes
+        # Send packet to FORWARDING_SERVER
         udp_socket.sendto(packet_to_forward, peer)
         while True:
+            # Wait for packet from FORWARDING_SERVER, if packet is from elsewhere. Buffer it for later processing.
             buf, source = udp_socket.recvfrom(512)
             print(f"{source=}")
             print(f"expected_source={peer}")
             if source != peer:
                 # this is a request from another client. Just add it to the packets.
-                packets.append((buf, source))
+                packets_buffer.append((buf, source))
             else:
                 break
-        print(f"{packets=}")
+        print(f"{packets_buffer=}")
+        # Ensure this is indeed the reponsse packet from FORWARDING_SERVER.
         assert source == peer
         answer_bytes = buf[len(packet_to_forward):]
         concat_answer += answer_bytes
@@ -327,7 +339,8 @@ def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, a
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--resolver', type=str, help='forwward to this server')
+    parser.add_argument('--resolver', type=str,
+                        help='forward to this dns server when my dns server doesnt have the answer')
     return parser.parse_args()
 
 
@@ -338,22 +351,27 @@ def main():
     args = get_args()
 
 
-    # Uncomment this block to pass the first stage
-
+    # My UDP socket
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_socket.bind(("127.0.0.1", 2053))
 
-    packets = []
+    # Since we are using same socket for receiving IP queries from clients and
+    # also IP responses from forwarded DNS servers. They may come in any order.
+    # We have to store the packets here so that we can check for what we need and keep the rest to handle later.
+    packets_buffer = []
 
     while True:
         try:
             # Receives 512 bytes (at most)
             # Conventionally, DNS packets are sent using UDP transport and are limited to 512 bytes.
-            if not packets:
+
+            # If there is a pending packet in packets buffer, process that first.
+            if not packets_buffer:
                 buf, source = udp_socket.recvfrom(512)
             else:
-                buf, source = packets[0]
-                packets = packets[1:]
+                buf, source = packets_buffer[0]
+                packets_buffer = packets_buffer[1:]
+
             print(f"data in {buf=}\n buf_len = {len(buf)}")
             recvd_header_dict = parse_dns_header(buf)
             packet_id = recvd_header_dict["Packet ID"]
@@ -371,14 +389,17 @@ def main():
             # 2. parse questions
             questions, question_section_end = parse_dns_questions(buf, qdcount)
             print(f"Questions received:\n {questions=}")
+            # The question is also sent to client as it is.
             response_question_section = buf[12:question_section_end]
 
             # 3. create answer section
             response_answer_section = b''
 
+            # If we have a DNS forwarding server, then ask it for the answer. Else lookup in your own cache.
             if args.resolver:
                 print(f"forwarding server at : {args.resolver}")
-                response_answer_section = forward_and_get_answers(recvd_header_dict, questions, udp_socket, args.resolver, packets)
+                response_answer_section = forward_and_get_answers(recvd_header_dict, questions,
+                                                                  udp_socket, args.resolver, packets_buffer)
             else:
                 for question in questions:
                     label_encoded_domain, _, _ = question
