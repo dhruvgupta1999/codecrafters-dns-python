@@ -205,7 +205,7 @@ def parse_dns_question(packet, start_idx):
             domain_suffix = get_label_encoded_domain_suffix(packet, remaining_domain_address)
             label_encoded_domain += domain_suffix
             idx += 2
-            continue
+            break
 
         label_len = byt
         label_encoded_domain += packet[idx + 1:idx + 1 + label_len]
