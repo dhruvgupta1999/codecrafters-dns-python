@@ -127,10 +127,51 @@ def generate_dns_header(*, question_count=0, answer_count=0, packet_id=1234,
     return header
 
 
+def parse_label_encoded_domain(question_bytes) -> tuple[str, int]:
+    """
+    Return the domain string and the index just after the end (null byte) of the label
+    encoded domain.
 
-def generate_question():
+    """
+    # Here you need to parse label encoding.
+    labels = []
+    idx = 0
+    while idx < len(question_bytes):
+        byt = question_bytes[idx]
+        # Each byte is automatically treated as an integer.
+        # domain ends with null byte
+        if byt == 0:
+            idx += 1
+            break
+        label_len = byt
+        labels.append(question_bytes[idx + 1:idx + 1 + label_len])
+        idx = idx + 1 + label_len
+    domain = '.'.join(labels)
+    return domain, idx
+
+
+def parse_dns_question(buf):
+    # ignore header part
+    buf = buf[12:]
+    idx = 0
+    while idx < len(buf):
+        byt = buf[idx]
+        idx += 1
+        if byt == 0:
+            # null byte
+            break
+    label_encoded_domain = buf[:idx]
+    assert idx < len(buf)
+    typ = int.from_bytes(buf[idx:idx+2])
+    class_field = int.from_bytes(buf[idx+2:idx+4])
+    logging.info("Received question:")
+    logging.info(f"{label_encoded_domain=}\n{typ=}\n{class_field=}")
+    return label_encoded_domain, typ, class_field
+
+
+def generate_question(label_encoded_domain=CODECRAFTERS_DOMAIN_LABEL_ENCODED):
     # name follows label encoding: [6]google[3]com followed by a null byte b'\x00'.
-    name = CODECRAFTERS_DOMAIN_LABEL_ENCODED
+    name = label_encoded_domain
     # corresponding to the "A" record type)
     typ = int(1).to_bytes(2)
     # (corresponding to the "IN" record class)
@@ -171,12 +212,15 @@ def main():
             packet_id = recvd_header_dict["Packet ID"]
             opcode = recvd_header_dict["Opcode"]
             rd = recvd_header_dict["RD"]
+            label_encoded_domain, typ, class_field  = parse_dns_question(buf)
+
+
             # Response Code (RCODE)
             # 0 (no error) if OPCODE is 0 (standard query) else 4 (not implemented)
             rcode = 0 if opcode == 0 else 4
             header = generate_dns_header(question_count=1, answer_count=1, packet_id=packet_id,
                                          opcode=opcode, rd=rd, response_code=rcode)
-            qsn = generate_question()
+            qsn = generate_question(label_encoded_domain=label_encoded_domain)
             answer = generate_answer()
             udp_socket.sendto(header+qsn+answer, source)
         except Exception as e:
