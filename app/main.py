@@ -278,7 +278,7 @@ def generate_answer(label_encoded_domain=CODECRAFTERS_DOMAIN_LABEL_ENCODED):
     return name + typ + class_field + time_to_live + length_rdata + ip
 
 
-def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, address):
+def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, address, packets):
     """
     Idea is that if my dns server doesn't have the ip,
     it will ask another DNS server and respond back to the client.
@@ -286,9 +286,10 @@ def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, a
     We have to forward each question separately and concatenate their answers together and return that as the
     response answer to the client.
 
+    Note:
+        This function is bad.
+        It returns a value, it also mutates the packets param.
     """
-    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    udp_socket.bind(("127.0.0.1", 2054))
     ip, port = tuple(address.split(':'))
     peer = ip, int(port)
     print(f"peer is {peer}")
@@ -308,14 +309,19 @@ def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, a
         udp_socket.sendto(packet_to_forward, peer)
         # possible bug: Here we have not handled the case where we are expecting to recv response from other dns server.
         # But some client sends a request and we receive that instead.
-        buf, source = udp_socket.recvfrom(512)
-        print(f"{source=}")
-        print(f"expected_source={peer}")
+        while True:
+            buf, source = udp_socket.recvfrom(512)
+            print(f"{source=}")
+            print(f"expected_source={peer}")
+            if source != peer:
+                # this is a request from another client. Just add it to the packets.
+                packets.append((buf, source))
+            else:
+                break
         assert source == peer
         answer_bytes = buf[len(packet_to_forward):]
         concat_answer += answer_bytes
 
-    udp_socket.close()
     return concat_answer
 
 
@@ -337,11 +343,17 @@ def main():
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_socket.bind(("127.0.0.1", 2053))
 
+    packets = []
+
     while True:
         try:
             # Receives 512 bytes (at most)
             # Conventionally, DNS packets are sent using UDP transport and are limited to 512 bytes.
-            buf, source = udp_socket.recvfrom(512)
+            if not packets:
+                buf, source = udp_socket.recvfrom(512)
+            else:
+                buf, source = packets[0]
+                packets = packets[1:]
             print(f"data in {buf=}\n buf_len = {len(buf)}")
             recvd_header_dict = parse_dns_header(buf)
             packet_id = recvd_header_dict["Packet ID"]
@@ -366,7 +378,7 @@ def main():
 
             if args.resolver:
                 print(f"forwarding server at : {args.resolver}")
-                response_answer_section = forward_and_get_answers(recvd_header_dict, questions, udp_socket, args.resolver)
+                response_answer_section = forward_and_get_answers(recvd_header_dict, questions, udp_socket, args.resolver, packets)
             else:
                 for question in questions:
                     label_encoded_domain, _, _ = question
