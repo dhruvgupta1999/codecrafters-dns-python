@@ -178,8 +178,8 @@ def generate_question(label_encoded_domain=CODECRAFTERS_DOMAIN_LABEL_ENCODED):
     class_field = int(1).to_bytes(2)
     return name + typ + class_field
 
-def generate_answer():
-    name = CODECRAFTERS_DOMAIN_LABEL_ENCODED
+def generate_answer(label_encoded_domain=CODECRAFTERS_DOMAIN_LABEL_ENCODED):
+    name = label_encoded_domain
     # corresponding to the "A" record type)
     typ = int(1).to_bytes(2)
     # (corresponding to the "IN" record class)
@@ -221,7 +221,7 @@ def main():
             header = generate_dns_header(question_count=1, answer_count=1, packet_id=packet_id,
                                          opcode=opcode, rd=rd, response_code=rcode)
             qsn = generate_question(label_encoded_domain=label_encoded_domain)
-            answer = generate_answer()
+            answer = generate_answer(label_encoded_domain=label_encoded_domain)
             udp_socket.sendto(header+qsn+answer, source)
         except Exception as e:
             print(f"Error receiving data: {e}")
