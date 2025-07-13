@@ -72,6 +72,8 @@ b.google.com is encoded as [1]b[2bits_pointer_incoming_!!][14bits_packet_address
 Server Forwarding:
 If my DNS server doesn't have the domain to IP mapping for a given request.
 It asks another server, and returns the answer to the client.
+1.1.1.1:53 is a worldwide DNS server managed by cloudflare. 
+You can use this to test your code.
 
 """
 
