@@ -287,7 +287,7 @@ def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, a
     response answer to the client.
 
     """
-    peer = tuple(':'.split(address))
+    peer = tuple(address.split(':'))
     print(f"peer is {peer}")
     concat_answer = b''
 
