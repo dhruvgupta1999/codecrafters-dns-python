@@ -1,13 +1,6 @@
 import socket
 import logging
 import struct
-from dataclasses import dataclass
-
-
-logging.basicConfig(level=logging.INFO)
-
-
-from dataclasses import dataclass
 
 """
 https://github.com/EmilHernvall/dnsguide/blob/b52da3b32b27c81e5c6729ac14fe01fef8b1b593/chapter1.md
@@ -106,7 +99,7 @@ def parse_dns_header(buf):
         "NSCOUNT": nscount,
         "ARCOUNT": arcount
     }
-    logging.info(f"received header:\n {header}")
+    print(f"received header:\n {header}")
     return header
 
 
@@ -143,7 +136,7 @@ def generate_dns_header(*, question_count=0, answer_count=0, packet_id=1234,
     nscount = 0             # Authority Record Count
     arcount = 0             # Additional Record Count
 
-    logging.info(f"Response header: {packet_id=}, {flags=}, {qdcount=}, {ancount=}, {nscount=}, {arcount=}")
+    print(f"Response header: {packet_id=}, {flags=}, {qdcount=}, {ancount=}, {nscount=}, {arcount=}")
 
     # Pack into bytes using network byte order (big endian)
     header = struct.pack("!HHHHHH", packet_id, flags, qdcount, ancount, nscount, arcount)
@@ -221,8 +214,8 @@ def parse_dns_question(packet, start_idx):
     assert idx < len(packet)
     typ = int.from_bytes(packet[idx:idx + 2])
     class_field = int.from_bytes(packet[idx + 2:idx + 4])
-    logging.info("Received question:")
-    logging.info(f"{label_encoded_domain=}\n{typ=}\n{class_field=}")
+    print("Received question:")
+    print(f"{label_encoded_domain=}\n{typ=}\n{class_field=}")
     return label_encoded_domain, typ, class_field, idx+4
 
 def parse_dns_questions(packet, num_questions):
@@ -276,7 +269,7 @@ def main():
             # Receives 512 bytes (at most)
             # Conventionally, DNS packets are sent using UDP transport and are limited to 512 bytes.
             buf, source = udp_socket.recvfrom(512)
-            logging.info(f"data in {buf=}\n buf_len = {len(buf)}")
+            print(f"data in {buf=}\n buf_len = {len(buf)}")
             recvd_header_dict = parse_dns_header(buf)
             packet_id = recvd_header_dict["Packet ID"]
             opcode = recvd_header_dict["Opcode"]
@@ -292,7 +285,7 @@ def main():
 
             # 2. parse questions
             questions, question_section_end = parse_dns_questions(buf, qdcount)
-            logging.info(f"Questions received:\n {questions=}")
+            print(f"Questions received:\n {questions=}")
             response_question_section = buf[12:question_section_end]
 
             # 3. create answer section
