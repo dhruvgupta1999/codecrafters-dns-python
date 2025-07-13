@@ -286,7 +286,7 @@ def main():
             # Response Code (RCODE)
             # 0 (no error) if OPCODE is 0 (standard query) else 4 (not implemented)
             rcode = 0 if opcode == 0 else 4
-            response_header = generate_dns_header(question_count=1, answer_count=1, packet_id=packet_id,
+            response_header = generate_dns_header(question_count=qdcount, answer_count=qdcount, packet_id=packet_id,
                                          opcode=opcode, rd=rd, response_code=rcode)
 
             # 2. parse questions
