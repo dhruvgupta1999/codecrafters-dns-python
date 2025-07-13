@@ -1,3 +1,4 @@
+import argparse
 import socket
 import logging
 import struct
@@ -55,7 +56,22 @@ normal name,
 
 
 """
+"""
 
+Server forwarding challenge:
+
+parse_questions.
+
+generate header based on received header.
+
+concat 1 qsn at a time and forward it to server.
+-> parse out the answer part (you can make use of len(heder+qsn) and get only answer)
+
+append all answers together.
+
+Now come to original response and return to client.
+
+"""
 
 # label encoding: [6]google[3]com followed by a null byte b'\x00'.
 CODECRAFTERS_DOMAIN_LABEL_ENCODED = b'\x0ccodecrafters\x02io\x00'
@@ -261,9 +277,55 @@ def generate_answer(label_encoded_domain=CODECRAFTERS_DOMAIN_LABEL_ENCODED):
     ip = b'\x08\x08\x08\x08'
     return name + typ + class_field + time_to_live + length_rdata + ip
 
+
+def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, address):
+    """
+    Idea is that if my dns server doesn't have the ip,
+    it will ask another DNS server and respond back to the client.
+
+    We have to forward each question separately and concatenate their answers together and return that as the
+    response answer to the client.
+
+    """
+    peer = ':'.split(address)
+    concat_answer = b''
+
+    packet_id = recvd_header_dict["Packet ID"]
+    opcode = recvd_header_dict["Opcode"]
+    rd = recvd_header_dict["RD"]
+    rcode = recvd_header_dict["RCODE"]
+    header_to_forward = generate_dns_header(question_count=1, answer_count=0, packet_id=packet_id,
+                                          opcode=opcode, rd=rd, response_code=rcode)
+
+    for q in received_questions:
+        domain = q[0]
+        q_bytes = generate_question(domain)
+        packet_to_forward = header_to_forward + q_bytes
+        udp_socket.sendto(packet_to_forward, peer)
+        # possible bug: Here we have not handled the case where we are expecting to recv response from other dns server.
+        # But some client sends a request and we receive that instead.
+        buf, source = udp_socket.recvfrom(512)
+        print(f"{source=}")
+        print(f"expected_source={peer}")
+        assert source == peer
+        answer_bytes = buf[len(packet_to_forward):]
+        concat_answer += answer_bytes
+
+    return concat_answer
+
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--resolver', type=str, help='forwward to this server')
+    return parser.parse_args()
+
+
 def main():
     # You can use print statements as follows for debugging, they'll be visible when running tests.
     print("Logs from your program will appear here!")
+
+    args = get_args()
+
 
     # Uncomment this block to pass the first stage
 
@@ -296,10 +358,14 @@ def main():
 
             # 3. create answer section
             response_answer_section = b''
-            for question in questions:
-                label_encoded_domain, _, _ = question
-                answer = generate_answer(label_encoded_domain=label_encoded_domain)
-                response_answer_section += answer
+
+            if args.resolver:
+                response_answer_section = forward_and_get_answers(recvd_header_dict, questions, udp_socket, args.resolver)
+            else:
+                for question in questions:
+                    label_encoded_domain, _, _ = question
+                    answer = generate_answer(label_encoded_domain=label_encoded_domain)
+                    response_answer_section += answer
             response = response_header + response_question_section + response_answer_section
             udp_socket.sendto(response, source)
         except Exception as e:
