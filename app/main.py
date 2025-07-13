@@ -191,6 +191,7 @@ def parse_dns_question(packet, start_idx):
     idx = start_idx
     label_encoded_domain = b''
     while idx < len(packet):
+        print(f"in loop, {idx=}")
         byt = packet[idx]
 
         if byt == 0:
@@ -204,7 +205,7 @@ def parse_dns_question(packet, start_idx):
             domain_suffix = get_label_encoded_domain_suffix(packet, remaining_domain_address)
             label_encoded_domain += domain_suffix
             idx += 2
-            pass
+            continue
 
         label_len = byt
         label_encoded_domain += packet[idx + 1:idx + 1 + label_len]
@@ -227,6 +228,7 @@ def parse_dns_questions(packet, num_questions):
     # exclude 12 bytes of header
     idx = 12
     for _ in range(num_questions):
+        print(f"At question num {_}")
         label_encoded_domain, typ, class_field, idx = parse_dns_question(packet, idx)
         questions.append((label_encoded_domain, typ, class_field))
     return questions, idx
