@@ -143,6 +143,7 @@ def generate_dns_header(*, question_count=0, answer_count=0, packet_id=1234,
     nscount = 0             # Authority Record Count
     arcount = 0             # Additional Record Count
 
+    logging.info(f"Response header: {packet_id=}, {flags=}, {qdcount=}, {ancount=}, {nscount=}, {arcount=}")
 
     # Pack into bytes using network byte order (big endian)
     header = struct.pack("!HHHHHH", packet_id, flags, qdcount, ancount, nscount, arcount)
@@ -289,13 +290,12 @@ def main():
             response_header = generate_dns_header(question_count=1, answer_count=1, packet_id=packet_id,
                                          opcode=opcode, rd=rd, response_code=rcode)
 
-
             # 2. parse questions
             questions, question_section_end = parse_dns_questions(buf, qdcount)
             logging.info(f"Questions received:\n {questions=}")
             response_question_section = buf[12:question_section_end]
 
-            # create answer section
+            # 3. create answer section
             response_answer_section = b''
             for question in questions:
                 label_encoded_domain, _, _ = question
