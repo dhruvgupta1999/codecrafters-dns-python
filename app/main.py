@@ -82,6 +82,18 @@ You can use this to test your code.
 CODECRAFTERS_DOMAIN_LABEL_ENCODED = b'\x0ccodecrafters\x02io\x00'
 
 def parse_dns_header(buf):
+    """
+    Parses the DNS header from the given byte buffer.
+
+    Args:
+        buf (bytes): The byte buffer containing the DNS packet.
+
+    Returns:
+        dict: A dictionary containing the parsed header fields and their values.
+
+    Raises:
+        ValueError: If the buffer is too short to contain a valid DNS header.
+    """
     if len(buf) < 12:
         raise ValueError("Buffer too short to be a valid DNS header")
 
@@ -126,6 +138,21 @@ def parse_dns_header(buf):
 
 def generate_dns_header(*, question_count=0, answer_count=0, packet_id=1234,
                         opcode=0, rd=0, response_code=0, qr=1):
+    """
+    Generates a DNS header with the specified parameters.
+
+    Args:
+        question_count (int): Number of questions in the packet.
+        answer_count (int): Number of answers in the packet.
+        packet_id (int): Packet identifier.
+        opcode (int): Operation code.
+        rd (int): Recursion desired flag.
+        response_code (int): Response code (RCODE).
+        qr (int): Query/Response indicator (0 for query, 1 for response).
+
+    Returns:
+        bytes: The packed DNS header as bytes.
+    """
     # Fixed values based on your spec
     packet_id = packet_id        # 16 bits
 
@@ -167,6 +194,15 @@ def generate_dns_header(*, question_count=0, answer_count=0, packet_id=1234,
 
 def parse_label_encoded_domain(question_bytes) -> tuple[str, int]:
     """
+    Parses a label-encoded domain name from the given bytes.
+
+    Args:
+        question_bytes (bytes): The bytes containing the label-encoded domain.
+
+    Returns:
+        tuple[str, int]: The domain as a string and the index just after the end of the label-encoded domain.
+    """
+    """
     Return the domain string and the index just after the end (null byte) of the label
     encoded domain.
 
@@ -189,9 +225,21 @@ def parse_label_encoded_domain(question_bytes) -> tuple[str, int]:
 
 def get_label_encoded_domain_suffix(packet, start_idx):
     """
-    When we use compression, we get the start index of the domain suffix.
-    :param remaining_buf:
-    :return:
+    Retrieves the label-encoded domain suffix from the packet starting at the given index.
+    In DNS name compression, a compressed domain uses a pointer (the first two bits set to 1)
+    to refer to the remainder of the domain name that appears earlier in the DNS packet.
+    This function extracts the full label-encoded domain, following the pointer if present.
+
+
+    Args:
+        packet (bytes): The full DNS packet.
+        start_idx (int): The index to start reading the domain suffix from.
+
+    Returns:
+        bytes: The label-encoded domain suffix including the null byte.
+
+    Raises:
+        ValueError: If no null byte is found indicating the end of the domain.
     """
     idx = start_idx
     while idx < len(packet):
@@ -203,11 +251,20 @@ def get_label_encoded_domain_suffix(packet, start_idx):
 
 def parse_dns_question(packet, start_idx):
     """
+    Parses a single DNS question from the packet starting at the given index.
 
-    :param packet: The received packet in full with header and everything
-    :param start_idx: The current idx where this question starts
-    :return: the question fields as a tuple, along with the index at which the next question or an answer starts.
+    Args:
+        packet (bytes): The full DNS packet.
+        start_idx (int): The index where the question starts.
+
+    Returns:
+        tuple: (label_encoded_domain, type, class_field, next_index)
+            label_encoded_domain (bytes): The label-encoded domain name.
+            type (int): The type of the DNS query.
+            class_field (int): The class of the DNS query.
+            next_index (int): The index just after the end of this question.
     """
+
     # ignore header part
     idx = start_idx
     label_encoded_domain = b''
@@ -246,6 +303,18 @@ def parse_dns_question(packet, start_idx):
 
 def parse_dns_questions(packet, num_questions):
     """
+    Parses all DNS questions from the packet.
+
+    Args:
+        packet (bytes): The full DNS packet.
+        num_questions (int): The number of questions to parse.
+
+    Returns:
+        tuple: (questions, next_index)
+            questions (list): List of tuples (label_encoded_domain, type, class_field) for each question.
+            next_index (int): The index just after the end of the question section.
+    """
+    """
     Return all parsed questions as domain, type, class tuples of each question.
     also return the index of byte just after the question section ends.
     """
@@ -259,6 +328,15 @@ def parse_dns_questions(packet, num_questions):
     return questions, idx
 
 def generate_question(label_encoded_domain=CODECRAFTERS_DOMAIN_LABEL_ENCODED):
+    """
+    Generates a DNS question section for the given label-encoded domain.
+
+    Args:
+        label_encoded_domain (bytes): The label-encoded domain name.
+
+    Returns:
+        bytes: The DNS question section as bytes.
+    """
     # name follows label encoding: [6]google[3]com followed by a null byte b'\x00'.
     name = label_encoded_domain
     # corresponding to the "A" record type)
@@ -268,6 +346,15 @@ def generate_question(label_encoded_domain=CODECRAFTERS_DOMAIN_LABEL_ENCODED):
     return name + typ + class_field
 
 def generate_answer(label_encoded_domain=CODECRAFTERS_DOMAIN_LABEL_ENCODED):
+    """
+    Generates a DNS answer section for the given label-encoded domain.
+
+    Args:
+        label_encoded_domain (bytes): The label-encoded domain name.
+
+    Returns:
+        bytes: The DNS answer section as bytes, including the IP address (8.8.8.8 by default).
+    """
     name = label_encoded_domain
     # corresponding to the "A" record type)
     typ = int(1).to_bytes(2)
@@ -284,6 +371,19 @@ def generate_answer(label_encoded_domain=CODECRAFTERS_DOMAIN_LABEL_ENCODED):
 
 
 def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, address, packets_buffer):
+    """
+    Forwards DNS questions to an upstream DNS server and collects the answers.
+
+    Args:
+        recvd_header_dict (dict): The parsed header of the received DNS packet.
+        received_questions (list): List of questions to forward.
+        udp_socket (socket.socket): The UDP socket to use for communication.
+        address (str): The address of the upstream DNS server (format: 'ip:port').
+        packets_buffer (list): Buffer to store unrelated packets for later processing.
+
+    Returns:
+        bytes: Concatenated answer sections from the upstream DNS server.
+    """
     """
     Idea is that if my dns server doesn't have the ip,
     it will ask another DNS server and respond back to the client.
@@ -340,6 +440,12 @@ def forward_and_get_answers(recvd_header_dict, received_questions, udp_socket, a
 
 
 def get_args():
+    """
+    Parses command-line arguments for the DNS server.
+
+    Returns:
+        argparse.Namespace: The parsed arguments, including the optional resolver address.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument('--resolver', type=str,
                         help='forward to this dns server when my dns server doesnt have the answer')
@@ -347,6 +453,10 @@ def get_args():
 
 
 def main():
+    """
+    Main entry point for the DNS server. Handles incoming DNS requests, processes them, and sends responses.
+    Supports forwarding to an upstream resolver if specified.
+    """
     # You can use print statements as follows for debugging, they'll be visible when running tests.
     print("Logs from your program will appear here!")
 
